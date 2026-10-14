@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Life Manager</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+    .container {
+      max-width: 400px;
+      width: 100%;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 0 auto 20px auto;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    h1 { font-size: 22px; font-weight: 600; margin: 0 0 8px 0; color: #f8fafc; }
+    p.status { font-size: 14px; color: #94a3b8; margin: 0 0 20px 0; line-height: 1.5; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 16px;
+      text-align: left;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      color: #f8fafc;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus {
+      border-color: #3b82f6;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #1d4ed8;
+    }
+    .btn-secondary {
+      background: #334155;
+      margin-top: 8px;
+    }
+    .btn-secondary:hover {
+      background: #475569;
+    }
+    .hidden {
+      display: none;
+    }
+    .error-badge {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <h1>Smart Life Manager</h1>
+      <p id="status-text" class="status">Connecting to application server...</p>
+    </div>
+
+    <div id="error-state" class="card hidden">
+      <div class="error-badge" id="error-message">Unable to connect to server</div>
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+        Make sure the Next.js dev server is running (<code>npm run dev</code>) and accessible on your network.
+      </p>
+
+      <div class="form-group">
+        <label for="server-url">Server URL</label>
+        <input type="text" id="server-url" placeholder="http://10.0.2.2:3000 or http://192.168.x.x:3000">
+      </div>
+
+      <button id="retry-btn" class="btn">Connect</button>
+      <button id="emulator-btn" class="btn btn-secondary">Use Emulator Default (10.0.2.2:3000)</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const DEFAULT_LAN_URL = 'http://192.168.0.104:3000';
+      const DEFAULT_EMULATOR_URL = 'http://10.0.2.2:3000';
+      const DEFAULT_LOCALHOST_URL = 'http://localhost:3000';
+
+      const savedUrl = localStorage.getItem('slm_server_url');
+      const urlInput = document.getElementById('server-url');
+      const statusText = document.getElementById('status-text');
+      const loadingState = document.getElementById('loading-state');
+      const errorState = document.getElementById('error-state');
+      const errorMessage = document.getElementById('error-message');
+      const retryBtn = document.getElementById('retry-btn');
+      const emulatorBtn = document.getElementById('emulator-btn');
+
+      urlInput.value = savedUrl || DEFAULT_LAN_URL;
+
+      async function testConnection(targetUrl) {
+        targetUrl = targetUrl.trim().replace(/\/+$/, '');
+        statusText.textContent = 'Connecting to ' + targetUrl + '...';
+        loadingState.classList.remove('hidden');
+        errorState.classList.add('hidden');
+
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+          const res = await fetch(targetUrl + '/api/health', {
+            method: 'GET',
+            signal: controller.signal
+          }).catch(async () => {
+            return await fetch(targetUrl, { method: 'GET', mode: 'no-cors', signal: controller.signal });
+          });
+
+          clearTimeout(timeoutId);
+
+          if (res && (res.ok || res.type === 'opaque' || res.status === 200 || res.status === 304 || res.status === 302)) {
+            localStorage.setItem('slm_server_url', targetUrl);
+            window.location.href = targetUrl;
+            return true;
+          } else {
+            throw new Error('Server returned HTTP ' + (res ? res.status : 'error'));
+          }
+        } catch (err) {
+          console.warn('Connection failed to ' + targetUrl, err);
+          return false;
+        }
+      }
+
+      async function autoConnect() {
+        const targets = [];
+        if (savedUrl) targets.push(savedUrl);
+        if (!targets.includes(DEFAULT_LAN_URL)) targets.push(DEFAULT_LAN_URL);
+        if (!targets.includes(DEFAULT_EMULATOR_URL)) targets.push(DEFAULT_EMULATOR_URL);
+        if (!targets.includes(DEFAULT_LOCALHOST_URL)) targets.push(DEFAULT_LOCALHOST_URL);
+
+        for (const url of targets) {
+          const success = await testConnection(url);
+          if (success) return;
+        }
+
+        showError('Could not reach server at ' + (targets[0] || DEFAULT_LAN_URL));
+      }
+
+      function showError(msg) {
+        loadingState.classList.add('hidden');
+        errorState.classList.remove('hidden');
+        errorMessage.textContent = msg;
+      }
+
+      retryBtn.addEventListener('click', function() {
+        let val = urlInput.value.trim();
+        if (!val) val = DEFAULT_EMULATOR_URL;
+        if (!/^https?:\/\//i.test(val)) {
+          val = 'http://' + val;
+        }
+        urlInput.value = val;
+        testConnection(val).then(function(success) {
+          if (!success) {
+            showError('Failed to connect to ' + val + '. Check server IP and port.');
+          }
+        });
+      });
+
+      emulatorBtn.addEventListener('click', function() {
+        urlInput.value = DEFAULT_EMULATOR_URL;
+        testConnection(DEFAULT_EMULATOR_URL).then(function(success) {
+          if (!success) {
+            showError('Failed to connect to ' + DEFAULT_EMULATOR_URL + '. Ensure server is running on port 3000.');
+          }
+        });
+      });
+
+      autoConnect();
+    })();
+  </script>
+</body>
+</html>
